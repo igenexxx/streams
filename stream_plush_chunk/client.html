@@ -1,0 +1,69 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stream Demo</title>
+  <style>
+      #output {
+          font-family: monospace;
+          white-space: pre-wrap;
+          padding: 20px;
+          background: #f0f0f0;
+          min-height: 200px;
+      }
+      #meta {
+          padding: 20px;
+          background: #e0e0e0;
+      }
+  </style>
+</head>
+<body>
+<h1>Streaming Content</h1>
+<div id="output"></div>
+<div id="meta"></div>
+
+<script>
+  async function startStream() {
+    const output = document.getElementById('output');
+    const metaDiv = document.getElementById('meta');
+
+    try {
+      const response = await fetch('http://localhost:3000/stream');
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let receivedContent = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          console.log('Stream complete');
+          break;
+        }
+
+        const chunk = decoder.decode(value);
+        try {
+          // Try to parse as JSON (final chunk)
+          const data = JSON.parse(chunk);
+          metaDiv.textContent = `Metadata received:
+ID: ${data.meta.id}
+Timestamp: ${data.meta.timestamp}
+Type: ${data.meta.type}`;
+          console.log('Complete data:', data);
+        } catch (e) {
+          // If not JSON, treat as content
+          receivedContent += chunk;
+          output.textContent = receivedContent;
+        }
+      }
+    } catch (error) {
+      console.error('Stream error:', error);
+      output.textContent = 'Error loading stream';
+    }
+  }
+
+  window.addEventListener('load', startStream);
+</script>
+</body>
+</html>
