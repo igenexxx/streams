@@ -1,8 +1,9 @@
-// server.js
 const http = require('http');
-const { Readable } = require('stream');
+const { Readable, pipeline } = require('stream');
 
-// Sample data
+const CHUNK_DELAY_MS = 130;
+const PORT = 3000;
+
 const data = {
   meta: {
     id: '123',
@@ -12,37 +13,39 @@ const data = {
   content: `This is a streaming example. Let's send some data over time. Here's line three. And here's the final line.`
 };
 
-// Create a readable stream that pushes words one by one
+/**
+ * Creates a readable stream that pushes words one by one.
+ * After sending all individual words, it pushes a JSON string with metadata and the full content.
+ */
 function createContentStream() {
   const readable = new Readable({
     read() {}
   });
 
-  // Split content into words based on spaces.
-  // You might adjust the splitting logic if punctuation is important.
   const words = data.content.split(' ');
   let index = 0;
 
   const interval = setInterval(() => {
     if (index < words.length) {
-      // Optionally, add a space back to separate words.
       readable.push(words[index] + ' ');
       index++;
     } else {
-      // Once all words are pushed, push a final JSON string with metadata and full content.
       readable.push(JSON.stringify({
         meta: data.meta,
         content: data.content
       }));
-      readable.push(null); // End the stream
+      readable.push(null);
       clearInterval(interval);
     }
-  }, 130); // Push a word every second
+  }, CHUNK_DELAY_MS);
+
+  readable.on('error', (err) => {
+    console.error('Readable stream error:', err);
+  });
 
   return readable;
 }
 
-// Create HTTP server
 const server = http.createServer((req, res) => {
   if (req.url === '/stream') {
     res.writeHead(200, {
@@ -51,23 +54,43 @@ const server = http.createServer((req, res) => {
       'Transfer-Encoding': 'chunked'
     });
 
-    const stream = createContentStream();
+    const contentStream = createContentStream();
 
-    stream.on('data', (chunk) => {
-      res.write(chunk);
+    // Use pipeline to pipe the readable stream into the response
+    pipeline(contentStream, res, (err) => {
+      if (err) {
+        console.error('Pipeline failed:', err);
+      } else {
+        console.log('Pipeline completed successfully');
+      }
     });
 
-    stream.on('end', () => {
-      res.end();
+    // Attach an error listener on the response in case of issues
+    res.on('error', (err) => {
+      console.error('Response stream error:', err);
     });
-
   } else {
-    res.writeHead(404);
-    res.end('Not found');
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
   }
 });
 
-const PORT = 3000;
+// Start the server
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
+// Graceful shutdown function
+function shutdown() {
+  console.log('Shutting down server gracefully...');
+  server.close((err) => {
+    if (err) {
+      console.error('Server shutdown error:', err);
+      process.exit(1);
+    }
+    process.exit(0);
+  });
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

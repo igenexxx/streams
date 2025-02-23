@@ -1,4 +1,3 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -30,33 +29,56 @@
 
     try {
       const response = await fetch('http://localhost:3000/stream');
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      // Use the ReadableStream API and the TextDecoder to process binary chunks.
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let receivedContent = '';
+      let buffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
+        if (done) break;
 
-        if (done) {
-          console.log('Stream complete');
-          break;
-        }
+        // Decode the current chunk and add it to the existing buffer.
+        buffer += decoder.decode(value, { stream: true });
 
-        const chunk = decoder.decode(value);
-        try {
-          // Try to parse as JSON (final chunk)
-          const data = JSON.parse(chunk);
-          metaDiv.textContent = `Metadata received:
+        // In this demo, we assume the final message contains JSON metadata.
+        // We search for the start of a JSON object, and if found we assume all text
+        // before that is content and the remainder is the JSON payload.
+        const jsonStart = buffer.indexOf('{');
+        if (jsonStart !== -1) {
+          // Append any text before the JSON data.
+          receivedContent += buffer.substring(0, jsonStart);
+          output.textContent = receivedContent;
+
+          // Attempt to parse the JSON; if parsing fails, it might be because
+          // the JSON payload is not fully received yet.
+          try {
+            const jsonPayload = buffer.substring(jsonStart);
+            const data = JSON.parse(jsonPayload);
+
+            metaDiv.textContent = `Metadata received:
 ID: ${data.meta.id}
 Timestamp: ${data.meta.timestamp}
 Type: ${data.meta.type}`;
-          console.log('Complete data:', data);
-        } catch (e) {
-          // If not JSON, treat as content
-          receivedContent += chunk;
+
+            // Clear buffer so that any further chunks (if there are any) are ignored.
+            buffer = '';
+          } catch (e) {
+            // JSON not complete; do nothing until complete data arrives.
+          }
+        } else {
+          // No JSON yet; treat all buffered text as part of the regular content.
+          receivedContent += buffer;
           output.textContent = receivedContent;
+          buffer = '';
         }
       }
+      console.log('Stream complete');
     } catch (error) {
       console.error('Stream error:', error);
       output.textContent = 'Error loading stream';
