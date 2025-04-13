@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Non-Flowing Fetch</title>
+</head>
+<body>
+<div id="output"></div>
+
+<script>
+  async function fetchAndProcessData(url) {
+    try {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const outputDiv = document.getElementById("output");
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          outputDiv.innerHTML += "<br>Stream finished.";
+          break;
+        }
+
+        const decodedChunk = decoder.decode(value);
+        outputDiv.innerHTML += decodedChunk;
+      }
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      document.getElementById("output").innerHTML += `<br>Error: ${error.message}`;
+    }
+  }
+
+  fetchAndProcessData("http://localhost:3000/api/stream");
+</script>
+</body>
+</html>
